@@ -1,4 +1,5 @@
 numpy==1.17.2
 opencv-contrib-python==4.1.1.26
 toml==0.10.0
+deep_merge==0.0.4
 parsimonious==0.8.1
