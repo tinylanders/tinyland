@@ -1,3 +1,4 @@
 numpy==1.17.2
 opencv-contrib-python==4.1.1.26
 toml==0.10.0
+parsimonious==0.8.1
