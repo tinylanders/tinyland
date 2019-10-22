@@ -1,11 +1,19 @@
 from . import data
+from .grammar import grammar, TinyTalkVisitor
 
 def dump():
     print("database dump:")
     print(names)
 
 def read_tiny_talk(s):
-    print(f"result is: {s}")
+    print(f"***** reading {s}")
+    tree = grammar.parse(s)
+    print("***** the parse tree")
+    print(tree)
+    visitor = TinyTalkVisitor()
+    output = visitor.visit(tree)
+    print("***** output")
+    print(output)
 
 def init_database():
     data.commit("aruco", "visible", {"id": 111, "x": 0, "y": 0})
