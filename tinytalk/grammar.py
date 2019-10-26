@@ -5,26 +5,41 @@ from parsimonious.nodes import RegexNode
 
 grammar = Grammar(
     r"""
-    program = query write
-    query = "when" entry (";" entry)*
+    start = expr
+    app = read write
+    read = "when" match (";" match)*
     write = (create / update) (";" (create / update))*
-    create = ws "create" entry
-    update = ws "update" ws name data
-    entry = adjectives? tags data? (ws alias)?
+    match = adjectives? relation? begin tags ws data_condition? end (ws alias)?
+    create = ws "create" (ws relation)? begin tags ws data? end
+    update = ws "update" ws name begin data end
     adjectives = (ws adjective)+
-    tags = (ws tag)+
-    data = (ws datum)+
-    alias = "as" ws name
+    tags = ws? tag (ws tag)*
+    data = ws? datum (ws datum)*
+    data_condition = ws? (condition / datum) (ws (condition / datum))*
+    alias = "as" ws name_with_pronouns
     ws = ~"([ \t\n,])+"
-    adjective = "one" / "only" / "global" / "nearest" / "friend"
+    adjective = "one" / "only" / "global"
+    relation = ws? "friend"
     tag = "#" name
-    datum = !"as" name (":" ws value)?
+    datum = name (":" ws expr)?
+    condition = name ws "where" ws truthy
+    truthy = boolean / inequality
+    inequality = (subexpr / name / value) ws? comparison ws? expr
+    comparison = ">" / "<" / "is" / "not"
+    expr =  multiplication / addition / subexpr / inequality / name / value
+    addition = (subexpr / multiplication / name / value) ws? ("+" / "-") ws? expr
+    multiplication = (subexpr / value / name) ws? "*" ws? expr
+    subexpr = "(" ws? expr ws? ")"
     value = number / string / boolean
     boolean = "true" / "false"
     string = ~'"[ ^\"]*"'
     number = ("+" / "-")? digit+ ("." digit+)?
-    digit = ~"[0-9]+"
-    name  = ~"[a-z][a-z_-]*"
+    digit = ~"[0-9]"
+    name_with_pronouns = name ("/" name)*
+    name = !reserved_word ~"[a-z][a-z_-]*"
+    begin = ws? "["
+    end = ws? "]"
+    reserved_word = "as" / "where"
     """)
 
 
@@ -152,27 +167,28 @@ class TinyTalkVisitor(NodeVisitor):
 
 
 
-# TODO data with ranges (eg "when #paddle x where 0 < x < 100, y")
+# DONE data with ranges (eg "when #paddle x where 0 < x < 100, y")
 # TODO explore alternative (shorthand?) query string options,
 ##     eg "mfw #success [epicwin.gif]"
 ##     equivalent to "when #success x, y [#image x y src: epicwin.gif]"
 ##     (macro system??)
-# QUESTION who is "me" in a given query?? (wrt "friend" or "nearest")
-# TODO namespace declaration syntax (eg "* namespace Pong")
-# TODO commit syntax
-# TODO maybe locus declaration syntax (eg "** app #paddle")
+# DONE pronouns (via QUESTION who is "me" in a given query?? (wrt "friend" or "nearest"))
+# TODO DESIGNED namespace declaration syntax (eg "* namespace Pong")
+# DONE commit syntax
+# CANCELLED maybe locus declaration syntax (eg "** app #paddle")
 # TODO paramaterizable adjectives?
-# TODO fix rules to block protected namespaces?
+# DONE fix rules to block protected namespaces & reserved words?
+# DONE expression syntax
 
 # * namespace Pong
-# when [#aruco x where 0 < x < 100, y] create [friend #paddle x: 100, y]
-# ** app #paddle x y
-# when [friend #aruco y] as marker update [my y: marker y]
-# when [global nearby #ball
-#   x where 90 < x < 110,
-#   velocity_x,
-#   y where (my y - 50) < y < (my y + 50)]
-#   as ball
-#   update [ball velocity_x: (ball velocity_x * -1)]
-
-# implies that the #paddle was declared in the Pong namespace
+# when [#aruco x where 0 < x < 100, y] create friend [#paddle x: 100, y]
+#
+# when [#paddle y] as me/my; friend [#aruco y] as tag/its update [my y: its y]
+#
+# when [#paddle x y] as me/my;
+#      global [#ball
+#               x where (my x - 10) < x < (my x + 10),
+#               velocity_x,
+#               y where (my y - 50) < y < (my y + 50)]
+#             as ball
+#      update ball [velocity_x: (ball velocity_x * -1)]
