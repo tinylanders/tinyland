@@ -24,59 +24,52 @@ grammar = Grammar(
     datum = name (":" ws expr)?
     condition = name ws "where" ws truthy
     truthy = boolean / inequality
-    inequality = (subexpr / name / value) ws? comparison ws? expr
-    comparison = ">" / "<" / "is" / "not"
-    expr =  multiplication / addition / subexpr / inequality / name / value
-    addition = (subexpr / multiplication / name / value) ws? ("+" / "-") ws? expr
-    multiplication = (subexpr / value / name) ws? "*" ws? expr
+    inequality = (subexpr / name / value)
+                 comparison
+                 (subexpr / (ws name) / value)
+                 (comparison (subexpr / (ws name) /value))?
+    comparison = (ws? (">" / "<") ws?) / (ws ("is" / "not") ws)
+    expr =  addition / multiplication / subexpr / inequality / value
+    addition = (multiplication / subexpr / value) ws? ("+" / "-") ws? expr
+    multiplication = (subexpr / value) ws? "*" ws? expr
     subexpr = "(" ws? expr ws? ")"
-    value = number / string / boolean
+    value = number / string / boolean / name
     boolean = "true" / "false"
-    string = ~'"[ ^\"]*"'
-    number = ("+" / "-")? digit+ ("." digit+)?
+    string = ~'"[^\"]*"'
+    number = ("+" / "-")? digit+ ("." digit+)? ("e" ("+" / "-") digit+)?
     digit = ~"[0-9]"
     name_with_pronouns = name ("/" name)*
     name = !reserved_word ~"[a-z][a-z_-]*"
     begin = ws? "["
     end = ws? "]"
-    reserved_word = "as" / "where"
-    """)
+    reserved_word = ("as" / "where") &ws
+    """
+)
 
 
 def not_whitespace(o):
     return not (isinstance(o, RegexNode) and o.expr_name == "ws")
 
+def is_wrapped(value):
+    return hasattr(value, "__iter__") and hasattr(value, "__len__") and len(value) is 1
 
-class Entry:
-    def __init__(self, *_, adjectives, tags, data, alias=None):
-        self.adjectives = adjectives
-        self.tags = tags
-        self.data = data
-        self.alias = alias
-
-    def __str__(self):
-        return pprint.pformat(self)
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}(adjectives={self.adjectives}, " \
-               f"tags={self.tags}, " \
-               f"data={self.data}, " \
-               f"alias={self.alias})"
+def unwrap(value):
+    while is_wrapped(value):
+        value = value[0]
+    return value
 
 
 class Update:
-
-    def __init__(self, *_, alias, data):
+    def __init__(self, *_, name, data):
         self.data = data
-        self.alias = alias
+        self.name = name
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(alias={self.alias}, " \
-               f"data={self.data})"
+        return f"{self.__class__.__name__}(name={self.name}, data={self.data})"
 
 
 class TinyTalkVisitor(NodeVisitor):
-    def visit_program(self, _node, visited_children):
+    def visit_app(self, _node, visited_children):
         query, write = visited_children
         return {"query": query, "write": write}
 
@@ -95,8 +88,7 @@ class TinyTalkVisitor(NodeVisitor):
         _ws1, _update, _ws2, alias, data = visited_children
         return Update(alias=alias, data=data)
 
-    def visit_query(self, _node, visited_children):
-        """ Returns the overall output. """
+    def visit_read(self, _node, visited_children):
         _when, first, rest = visited_children
         query = [first]
         if isinstance(rest, list):
@@ -105,13 +97,12 @@ class TinyTalkVisitor(NodeVisitor):
 
     def visit_entry(self, _node, visited_children):
         adjectives_opt, tags, data_opt, alias_opt = visited_children
-        adjectives = set(adjectives_opt[0]) if isinstance(adjectives_opt, list) else None
+        adjectives = (
+            set(adjectives_opt[0]) if isinstance(adjectives_opt, list) else None
+        )
         data = data_opt[0] if isinstance(data_opt, list) else None
         alias = alias_opt[0][1] if isinstance(alias_opt, list) else None
-        cond = Entry(adjectives=adjectives,
-                     tags=set(tags),
-                     data=data,
-                     alias=alias)
+        cond = Entry(adjectives=adjectives, tags=set(tags), data=data, alias=alias)
         return cond
 
     def visit_alias(self, _node, visited_children):
@@ -145,6 +136,23 @@ class TinyTalkVisitor(NodeVisitor):
             val = val[0]
         return name, val
 
+    def visit_expr(self, _node, visited_children):
+        return unwrap(visited_children)
+
+    def visit_multiplication(self, _node, visited_children):
+        left, _ws, op, _ws, right = [unwrap(child) for child in visited_children]
+        return (op.text, left, right)
+
+    def visit_addition(self, _node, visited_children):
+        left, _ws, op, _ws, right = [
+            unwrap(child) for child in unwrap(visited_children)
+        ]
+        return (op.text, left, right)
+
+    def visit_subexpr(self, _node, visited_children):
+        _paren, _ws, expr, _ws, _paren = unwrap(visited_children)
+        return unwrap(expr)
+
     def visit_number(self, node, _visited_children):
         return float(node.text)
 
@@ -163,8 +171,6 @@ class TinyTalkVisitor(NodeVisitor):
     def generic_visit(self, node, visited_children):
         """ The generic visit method. """
         return visited_children or node
-
-
 
 
 # DONE data with ranges (eg "when #paddle x where 0 < x < 100, y")
