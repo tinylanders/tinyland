@@ -1,7 +1,18 @@
 from . import grammar
 from hypothesis import given, reject
 from hypothesis.strategies import composite, floats, text, sampled_from
-from math import isnan
+
+## Tests for TinyTalk's grammar
+#
+# To run the tests:
+#
+# $ pip install -r requirements.txt
+# $ pytest
+# ...
+# ====== n passed in 1.97s ======
+
+
+## Helper functions
 
 
 @composite
@@ -28,7 +39,7 @@ def operators():
 
 @composite
 def exprs(draw):
-    length=draw(sampled_from([1, 2, 3]))
+    length = draw(sampled_from([1, 2, 3]))
     result = str(draw(names_or_floats()))
     for _ in range(0, length):
         result += ws_between(
@@ -43,6 +54,9 @@ def whitespaces(min_size=0):
 
 def ws_between(ws, *enum):
     return ws.join(map(str, enum))
+
+
+## Tests
 
 
 @given(floats(allow_infinity=False, allow_nan=False))
@@ -109,3 +123,6 @@ def test_inequality(val_a, comp_a, val_b, comp_b, val_c, ws):
 @given(exprs())
 def test_expr(e):
     grammar["expr"].parse(e)
+
+
+## end test_grammar.py
