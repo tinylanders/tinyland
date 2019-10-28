@@ -24,12 +24,12 @@ grammar = Grammar(
     datum = name (":" ws expr)?
     condition = name ws "where" ws truthy
     truthy = boolean / inequality
-    inequality = (subexpr / name / value)
-                 comparison
-                 (subexpr / (ws name) / value)
-                 (comparison (subexpr / (ws name) /value))?
+    expr =  inequality / addition / multiplication / subexpr / value
+    inequality = (addition / multiplication / subexpr / name / value)
+                 comparison ws?
+                 expr
+                 (comparison ws? expr)?
     comparison = (ws? (">" / "<") ws?) / (ws ("is" / "not") ws)
-    expr =  addition / multiplication / subexpr / inequality / value
     addition = (multiplication / subexpr / value) ws? ("+" / "-") ws? expr
     multiplication = (subexpr / value) ws? "*" ws? expr
     subexpr = "(" ws? expr ws? ")"
@@ -42,7 +42,7 @@ grammar = Grammar(
     name = !reserved_word ~"[a-z][a-z_-]*"
     begin = ws? "["
     end = ws? "]"
-    reserved_word = ("as" / "where") &ws
+    reserved_word = ("as" / "where" / "true" / "false") &ws
     """
 )
 

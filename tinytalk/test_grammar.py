@@ -2,13 +2,12 @@ from . import grammar
 from hypothesis import given, reject
 from hypothesis.strategies import composite, floats, text, sampled_from
 from math import isnan
-from random import choice
 
 
 @composite
 def names(draw):
-    alpha_chars = "abcdefghijklmnopqrstuvwxyz"
-    name_chars = alpha_chars + "-_"
+    alpha_chars = "bcdeghijklmnopqrsuvxyz"  # no [awtf] at start to avoid reserved words
+    name_chars = alpha_chars + "awtf-_"
     return draw(text(alphabet=alpha_chars, min_size=1)) + draw(
         text(alphabet=name_chars)
     )
@@ -16,11 +15,34 @@ def names(draw):
 
 @composite
 def names_or_floats(draw):
-    return choice([draw(floats(allow_infinity=False, allow_nan=False)), draw(names())])
+    return draw(
+        sampled_from(
+            [draw(floats(allow_infinity=False, allow_nan=False)), draw(names())]
+        )
+    )
+
+
+def operators():
+    return sampled_from(["+", " -", "*", "<", ">", " is ", " not "])
+
+
+@composite
+def exprs(draw):
+    length=draw(sampled_from([1, 2, 3]))
+    result = str(draw(names_or_floats()))
+    for _ in range(0, length):
+        result += ws_between(
+            draw(whitespaces()), draw(operators()), draw(names_or_floats())
+        )
+    return result
 
 
 def whitespaces(min_size=0):
     return text(alphabet=" ,\n", min_size=min_size)
+
+
+def ws_between(ws, *enum):
+    return ws.join(map(str, enum))
 
 
 @given(floats(allow_infinity=False, allow_nan=False))
@@ -69,7 +91,7 @@ def test_addition(n, m, ws):
     whitespaces(),
 )
 def test_multiplication(n, m, ws):
-    grammar["multiplication"].parse(f"{n}{ws}*{ws}{m}")
+    grammar["multiplication"].parse(ws_between(ws, n, "*", m))
 
 
 @given(
@@ -81,6 +103,9 @@ def test_multiplication(n, m, ws):
     whitespaces(),
 )
 def test_inequality(val_a, comp_a, val_b, comp_b, val_c, ws):
-    grammar["inequality"].parse(
-        f"{val_a}{ws}{comp_a}{ws}{val_b}{ws}{comp_b}{ws}{val_c}"
-    )
+    grammar["inequality"].parse(ws_between(ws, val_a, comp_a, val_b, comp_b, val_c))
+
+
+@given(exprs())
+def test_expr(e):
+    grammar["expr"].parse(e)
