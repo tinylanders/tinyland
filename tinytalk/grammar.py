@@ -5,14 +5,13 @@ from parsimonious.nodes import RegexNode
 
 grammar = Grammar(
     r"""
-    start = expr
-    app = read write
-    read = "when" match (";" match)*
+    app = read ws? write
+    read = "when" ws match (";" ws match)*
     write = (create / update) (";" (create / update))*
     match = adjectives? relation? begin tags ws data_condition? end (ws alias)?
-    create = ws "create" (ws relation)? begin tags ws data? end
-    update = ws "update" ws name begin data end
-    adjectives = (ws adjective)+
+    create = "create" (ws relation)? begin tags ws data? end
+    update = "update" ws name begin data end
+    adjectives = adjective (ws adjective)*
     tags = ws? tag (ws tag)*
     data = ws? datum (ws datum)*
     data_condition = ws? (condition / datum) (ws (condition / datum))*
@@ -50,8 +49,10 @@ grammar = Grammar(
 def not_whitespace(o):
     return not (isinstance(o, RegexNode) and o.expr_name == "ws")
 
+
 def is_wrapped(value):
     return hasattr(value, "__iter__") and hasattr(value, "__len__") and len(value) is 1
+
 
 def unwrap(value):
     while is_wrapped(value):

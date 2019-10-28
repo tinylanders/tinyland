@@ -33,6 +33,17 @@ def names_or_floats(draw):
     )
 
 
+@composite
+def data(draw, n=1):
+    result = []
+    for i in range(0, n):
+        name = draw(names())
+        ws = draw(whitespaces(1))
+        val = draw(exprs())
+        result.append(f"{name}:{ws}{val}")
+    return ws_between(ws, *result)
+
+
 def operators():
     return sampled_from(["+", " -", "*", "<", ">", " is ", " not "])
 
@@ -60,7 +71,7 @@ def ws_between(ws, *enum):
 
 
 @given(floats(allow_infinity=False, allow_nan=False))
-def test_number_grammar(n):
+def test_number(n):
     grammar["number"].parse(str(n))
 
 
@@ -85,7 +96,7 @@ def test_name_with_pronouns(n, pn):
     grammar["name_with_pronouns"].parse(n + "/" + pn)
 
 
-@given(text(alphabet=" \n,", min_size=1))
+@given(whitespaces(1))
 def test_whitespace(t):
     grammar["ws"].parse(t)
 
@@ -123,6 +134,49 @@ def test_inequality(val_a, comp_a, val_b, comp_b, val_c, ws):
 @given(exprs())
 def test_expr(e):
     grammar["expr"].parse(e)
+
+
+@given(names(), whitespaces(1), names_or_floats(), sampled_from(["<", ">"]))
+def test_condition(name, ws, val, comp):
+    grammar["condition"].parse(ws_between(ws, name, "where", name, comp, val))
+
+
+@given(data())
+def test_datum(d):
+    grammar["datum"].parse(d)
+
+
+@given(names())
+def test_tag(name):
+    grammar["tag"].parse(f"#{name}")
+
+
+@given(names(), data(2), whitespaces())
+def test_update(name, data, ws):
+    grammar["update"].parse(ws_between(ws, "update ", name, " [", data, "]"))
+
+
+@given(sampled_from(["", "friend"]), names(), data(2), whitespaces())
+def test_create(relation, tag, data, ws):
+    grammar["create"].parse(
+        ws_between(ws, "create ", relation, " [", f"#{tag} #{tag} ", data, "]")
+    )
+
+
+@given(
+    sampled_from(["", "one", "only", "global"]),
+    sampled_from(["", "friend"]),
+    names(),
+    data(2),
+    names(),
+    whitespaces(),
+)
+def test_match(adjective, relation, tag, data, alias, ws):
+    grammar["match"].parse(
+        ws_between(
+            ws, adjective, " ", relation, " [", f"#{tag} #{tag} ", data, "] as ", alias
+        )
+    )
 
 
 ## end test_grammar.py
