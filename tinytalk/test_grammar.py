@@ -1,4 +1,4 @@
-from . import grammar
+from . import grammar, TinyTalkVisitor
 from hypothesis import given, reject
 from hypothesis.strategies import composite, floats, text, sampled_from
 
@@ -13,6 +13,12 @@ from hypothesis.strategies import composite, floats, text, sampled_from
 
 
 ## Helper functions
+
+visitor = TinyTalkVisitor()
+
+
+def visit(tree):
+    return visitor.visit(tree)
 
 
 @composite
@@ -34,9 +40,10 @@ def names_or_floats(draw):
 
 
 @composite
-def data(draw, n=1):
+def data(draw, max_n=1):
     result = []
-    for i in range(0, n):
+    n = draw(sampled_from(list(range(1, max_n + 1))))
+    for _ in range(0, n):
         name = draw(names())
         ws = draw(whitespaces(1))
         val = draw(exprs())
@@ -49,10 +56,10 @@ def operators():
 
 
 @composite
-def exprs(draw):
-    length = draw(sampled_from([1, 2, 3]))
+def exprs(draw, max_n=1):
     result = str(draw(names_or_floats()))
-    for _ in range(0, length):
+    n = draw(sampled_from(list(range(1, max_n + 1))))
+    for _ in range(0, n):
         result += ws_between(
             draw(whitespaces()), draw(operators()), draw(names_or_floats())
         )
@@ -72,28 +79,34 @@ def ws_between(ws, *enum):
 
 @given(floats(allow_infinity=False, allow_nan=False))
 def test_number(n):
-    grammar["number"].parse(str(n))
-
+    result = grammar["number"].parse(str(n))
+    assert visit(result) == n
 
 @given(text())
 def test_string(t):
     if '"' in t:
         reject()
-    grammar["string"].parse('"' + t + '"')
+    result = grammar["string"].parse('"' + t + '"')
+    assert visit(result) == f'"{t}"'
 
 
 @given(names())
 def test_name(n):
     if n in ["as", "where"]:
         reject()
-    grammar["name"].parse(n)
+    result = grammar["name"].parse(n)
+    assert visit(result) == n
 
 
 @given(names(), names())
 def test_name_with_pronouns(n, pn):
     if len(set([n, pn]).intersection(set(["as", "where"]))) > 0:
         reject()
-    grammar["name_with_pronouns"].parse(n + "/" + pn)
+    result = grammar["name_with_pronouns"].parse(n)
+    assert visit(result) == [n]
+
+    result = grammar["name_with_pronouns"].parse(n + "/" + pn + "/" + pn)
+    assert visit(result) == [n, pn, pn]
 
 
 @given(whitespaces(1))
@@ -107,7 +120,8 @@ def test_whitespace(t):
     whitespaces(),
 )
 def test_addition(n, m, ws):
-    grammar["addition"].parse(f"{n}{ws}+{ws}{m}")
+    result = grammar["addition"].parse(f"{n}{ws}+{ws}{m}")
+    assert visit(result) == ("+", n, m)
 
 
 @given(
@@ -116,7 +130,8 @@ def test_addition(n, m, ws):
     whitespaces(),
 )
 def test_multiplication(n, m, ws):
-    grammar["multiplication"].parse(ws_between(ws, n, "*", m))
+    result = grammar["multiplication"].parse(ws_between(ws, n, "*", m))
+    assert visit(result) == ("*", n, m)
 
 
 @given(
@@ -128,7 +143,8 @@ def test_multiplication(n, m, ws):
     whitespaces(),
 )
 def test_inequality(val_a, comp_a, val_b, comp_b, val_c, ws):
-    grammar["inequality"].parse(ws_between(ws, val_a, comp_a, val_b, comp_b, val_c))
+    result = grammar["inequality"].parse(ws_between(ws, val_a, comp_a, val_b, comp_b, val_c))
+    assert visit(result) == ('and', (comp_a.strip(), val_b, val_a), (comp_b.strip(), val_b, val_c))
 
 
 @given(exprs())
@@ -151,12 +167,12 @@ def test_tag(name):
     grammar["tag"].parse(f"#{name}")
 
 
-@given(names(), data(2), whitespaces())
+@given(names(), data(3), whitespaces())
 def test_update(name, data, ws):
     grammar["update"].parse(ws_between(ws, "update ", name, " [", data, "]"))
 
 
-@given(sampled_from(["", "friend"]), names(), data(2), whitespaces())
+@given(sampled_from(["", "friend"]), names(), data(3), whitespaces())
 def test_create(relation, tag, data, ws):
     grammar["create"].parse(
         ws_between(ws, "create ", relation, " [", f"#{tag} #{tag} ", data, "]")
@@ -167,7 +183,7 @@ def test_create(relation, tag, data, ws):
     sampled_from(["", "one", "only", "global"]),
     sampled_from(["", "friend"]),
     names(),
-    data(2),
+    data(3),
     names(),
     whitespaces(),
 )

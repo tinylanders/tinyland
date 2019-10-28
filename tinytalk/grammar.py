@@ -3,6 +3,8 @@ import pprint
 from parsimonious.grammar import Grammar, NodeVisitor
 from parsimonious.nodes import RegexNode
 
+whitespace_chars = " \n,"
+
 grammar = Grammar(
     r"""
     app = read ws? write
@@ -26,8 +28,8 @@ grammar = Grammar(
     expr =  inequality / addition / multiplication / subexpr / value
     inequality = (addition / multiplication / subexpr / name / value)
                  comparison ws?
-                 expr
-                 (comparison ws? expr)?
+                 (addition / multiplication / subexpr / name / value)
+                 (comparison ws? (addition / multiplication / subexpr / name / value))?
     comparison = (ws? (">" / "<") ws?) / (ws ("is" / "not") ws)
     addition = (multiplication / subexpr / value) ws? ("+" / "-") ws? expr
     multiplication = (subexpr / value) ws? "*" ws? expr
@@ -51,7 +53,12 @@ def not_whitespace(o):
 
 
 def is_wrapped(value):
-    return hasattr(value, "__iter__") and hasattr(value, "__len__") and len(value) is 1
+    return (
+        hasattr(value, "__iter__")
+        and hasattr(value, "__len__")
+        and len(value) is 1
+        and value != value[0]
+    )
 
 
 def unwrap(value):
@@ -140,6 +147,17 @@ class TinyTalkVisitor(NodeVisitor):
     def visit_expr(self, _node, visited_children):
         return unwrap(visited_children)
 
+    def visit_inequality(self, _node, visited_children):
+        left, comp_a, _ws, middle, rest = [unwrap(child) for child in visited_children]
+        if not hasattr(rest, 'children'):
+            comp_b, _ws, right = [unwrap(child) for child in rest]
+            return ("and", (comp_a, middle, left), (comp_b, middle, right))
+        else:
+            return (comp_a, left, middle)
+
+    def visit_comparison(self, node, _visited_children):
+        return node.text.strip(whitespace_chars)
+
     def visit_multiplication(self, _node, visited_children):
         left, _ws, op, _ws, right = [unwrap(child) for child in visited_children]
         return (op.text, left, right)
@@ -156,6 +174,9 @@ class TinyTalkVisitor(NodeVisitor):
 
     def visit_number(self, node, _visited_children):
         return float(node.text)
+
+    def visit_name_with_pronouns(self, node, _visited_children):
+        return node.text.split("/")
 
     def visit_name(self, node, _visited_children):
         return node.text
