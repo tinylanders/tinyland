@@ -103,6 +103,10 @@ class TinyTalkVisitor(NodeVisitor):
             query += [pair[1] for pair in rest]
         return query
 
+    def visit_condition(self, _node, visited_children):
+        name, _ws, _where, _ws, truthy = [unwrap(child) for child in visited_children]
+        return name, ("cond", truthy)
+
     def visit_entry(self, _node, visited_children):
         adjectives_opt, tags, data_opt, alias_opt = visited_children
         adjectives = (
@@ -137,11 +141,10 @@ class TinyTalkVisitor(NodeVisitor):
         return dict(data)
 
     def visit_datum(self, _node, visited_children):
-        _as, name, val_opt = visited_children
+        name, val_opt = [unwrap(child) for child in visited_children]
         val = "ANY"
-        if isinstance(val_opt, list):
-            _ws, _colon, val = val_opt[0]
-            val = val[0]
+        if not hasattr(val_opt, "children"):
+            _ws, _colon, val = [unwrap(child) for child in val_opt]
         return name, val
 
     def visit_expr(self, _node, visited_children):
