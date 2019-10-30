@@ -1,5 +1,5 @@
 from . import data
-from .grammar import grammar, TinyTalkVisitor, whitespace_chars
+from .grammar import Command, grammar, TinyTalkVisitor, whitespace_chars
 
 def dump():
     print("database dump:")

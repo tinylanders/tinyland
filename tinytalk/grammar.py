@@ -1,19 +1,27 @@
+from enum import Enum
 import pprint
 
 from parsimonious.grammar import Grammar, NodeVisitor
 from parsimonious.nodes import RegexNode
+
+class Command(Enum):
+    MATCH = 0
+    CREATE = 1
+    UPDATE = 2
+    COND = 3
+    AND = 4
 
 whitespace_chars = " \n,"
 
 grammar = Grammar(
     r"""
     app = read ws? write
-    read = "when" ws match (";" ws match)*
-    write = (create / update) (";" (create / update))*
-    match = adjectives? relation? begin tags ws data_condition? end (ws alias)?
-    create = "create" (ws relation)? begin tags ws data? end
+    read = "when" ws match (";" ws? match)*
+    write = (create / update) (";" ws? (create / update))*
+    match = adjectives? relation? begin ws? tags ws data_condition? end (ws alias)?
+    create = "create" (ws relation)? begin ws? tags ws data? end
     update = "update" ws name begin data end
-    adjectives = adjective (ws adjective)*
+    adjectives = ws? adjective (ws adjective)*
     tags = ws? tag (ws tag)*
     data = ws? datum (ws datum)*
     data_condition = ws? (condition / datum) (ws (condition / datum))*
@@ -54,8 +62,7 @@ def not_whitespace(o):
 
 def is_wrapped(value):
     return (
-        hasattr(value, "__iter__")
-        and hasattr(value, "__len__")
+        isinstance(value, list)
         and len(value) is 1
         and value != value[0]
     )
@@ -67,77 +74,81 @@ def unwrap(value):
     return value
 
 
-class Update:
-    def __init__(self, *_, name, data):
-        self.data = data
-        self.name = name
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}(name={self.name}, data={self.data})"
-
-
 class TinyTalkVisitor(NodeVisitor):
     def visit_app(self, _node, visited_children):
-        query, write = visited_children
-        return {"query": query, "write": write}
+        read, _ws, write = visited_children
+        return read, write #TODO command string?
+    
+    def visit_match(self, node, visited_children):
+        [adjectives_opt, relation_opt, _begin, _ws, tags, _ws, data_condition_opt, _end,
+         ws_alias_opt] = visited_children
+        adjectives = unwrap(adjectives_opt) if isinstance(adjectives_opt, list) else None
+        relation = unwrap(relation_opt) if isinstance(relation_opt, list) else None
+        data_condition = unwrap(data_condition_opt) if isinstance(data_condition_opt, list) else None
+        alias = unwrap(ws_alias_opt)[1] if isinstance(ws_alias_opt, list) else None
+        return Command.MATCH.name, adjectives, relation, tags, data_condition, unwrap(alias)
+    
+    def visit_data_condition(self, node, visited_children):
+        _ws, first, rest = visited_children
+        data_conds = [unwrap(first)] + [unwrap(data_cond) for [_ws, data_cond] in rest]
+        return dict(data_conds)
 
     def visit_write(self, _node, visited_children):
         first, rest = visited_children
-        write = [first[0]]
+        write = [unwrap(first)]
         if isinstance(rest, list):
-            write += [pair[1][0] for pair in rest]
+            write += [unwrap(pair[2]) for pair in rest]
         return write
 
     def visit_create(self, _node, visited_children):
-        ws1, _create, entry = visited_children
-        return entry
+        _create, relation_opt, _begin, _ws, tags, _ws, data_opt, _end = visited_children
+        relation = unwrap(relation_opt)[1] if isinstance(relation_opt, list) else None
+        data = unwrap(data_opt) if isinstance(data_opt, list) else None
+        return Command.CREATE.name, tags, relation, data
 
     def visit_update(self, _node, visited_children):
-        _ws1, _update, _ws2, alias, data = visited_children
-        return Update(alias=alias, data=data)
+        _update, _ws, name, _begin, data, _end = visited_children
+        return Command.UPDATE.name, name, data
 
     def visit_read(self, _node, visited_children):
-        _when, first, rest = visited_children
+        _when, _ws, first, rest = visited_children
         query = [first]
         if isinstance(rest, list):
-            query += [pair[1] for pair in rest]
+            query += [pair[2] for pair in rest]
         return query
 
     def visit_condition(self, _node, visited_children):
         name, _ws, _where, _ws, truthy = [unwrap(child) for child in visited_children]
-        return name, ("cond", truthy)
-
-    def visit_entry(self, _node, visited_children):
-        adjectives_opt, tags, data_opt, alias_opt = visited_children
-        adjectives = (
-            set(adjectives_opt[0]) if isinstance(adjectives_opt, list) else None
-        )
-        data = data_opt[0] if isinstance(data_opt, list) else None
-        alias = alias_opt[0][1] if isinstance(alias_opt, list) else None
-        cond = Entry(adjectives=adjectives, tags=set(tags), data=data, alias=alias)
-        return cond
+        return name, (Command.COND.name, truthy)
 
     def visit_alias(self, _node, visited_children):
         _as, _ws, name = visited_children
         return name
 
     def visit_adjectives(self, _node, visited_children):
-        adjs = [child[1] for child in visited_children]
-        return adjs
+        _ws, first, rest = visited_children
+        adjectives = [unwrap(first)] + [unwrap(adjective) for [_ws, adjective] in rest]
+        return adjectives
 
     def visit_adjective(self, _node, visited_children):
         return visited_children[0].text
 
     def visit_tags(self, _node, visited_children):
-        tags = [child[1] for child in visited_children]
+        _ws, first, rest = visited_children
+        tags = [unwrap(first)] + [unwrap(tag) for [_ws, tag] in rest]
         return tags
 
     def visit_tag(self, _node, visited_children):
         _pound, name = visited_children
         return name
+    
+    def visit_relation(self, _node, visited_children):
+        _ws, relation = visited_children
+        return relation.text
 
     def visit_data(self, _node, visited_children):
-        data = [child[1] for child in visited_children]
+        _ws, first, rest = visited_children
+        data = [unwrap(first)] + [unwrap(datum) for [_ws, datum] in rest]
         return dict(data)
 
     def visit_datum(self, _node, visited_children):
@@ -154,7 +165,7 @@ class TinyTalkVisitor(NodeVisitor):
         left, comp_a, _ws, middle, rest = [unwrap(child) for child in visited_children]
         if not hasattr(rest, 'children'):
             comp_b, _ws, right = [unwrap(child) for child in rest]
-            return ("and", (comp_a, middle, left), (comp_b, middle, right))
+            return (Command.AND.name, (comp_a, middle, left), (comp_b, middle, right))
         else:
             return (comp_a, left, middle)
 
