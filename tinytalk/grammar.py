@@ -165,7 +165,7 @@ class TinyTalkVisitor(NodeVisitor):
         left, comp_a, _ws, middle, rest = [unwrap(child) for child in visited_children]
         if not hasattr(rest, 'children'):
             comp_b, _ws, right = [unwrap(child) for child in rest]
-            return (Command.AND.name, (comp_a, middle, left), (comp_b, middle, right))
+            return (Command.AND.name, (comp_a, left, middle), (comp_b, middle, right))
         else:
             return (comp_a, left, middle)
 
