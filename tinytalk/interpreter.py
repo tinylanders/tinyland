@@ -1,31 +1,20 @@
-<<<<<<< HEAD
 """Functions for running compiled tinytalk apps on a scene."""
 
-=======
->>>>>>> 7463986d84403b1a28f28f697f04d78987251f56
 from collections import defaultdict, namedtuple
-from deep_merge import merge
 import uuid
 
-from .grammar import Command
+from grammar import Command
 
 
-<<<<<<< HEAD
 # Dict mapping adjective names in tinytalk to functions that filter a list
 # of tinyland things.
-=======
->>>>>>> 7463986d84403b1a28f28f697f04d78987251f56
 adjectives = {
-    "only": lambda l: return l if len(l) == 1 else []
+    "only": lambda l: l if len(l) == 1 else []
 }
 
 
-<<<<<<< HEAD
 def tup(**kwargs) -> namedtuple:
     """Convert an arbitrary number of kwargs to a namedtuple."""
-=======
-def tup(**kwargs):
->>>>>>> 7463986d84403b1a28f28f697f04d78987251f56
     tup = namedtuple("tinyTuple", list(kwargs))
     return tup(**kwargs)
 
@@ -36,7 +25,6 @@ def lookup(name: str, namespace: namedtuple):
     return None
 
 
-<<<<<<< HEAD
 def condition(var_name: str, context: dict, cond_json, row: namedtuple) -> bool:
     """Check if condition holds true for the given parameters.
 
@@ -63,28 +51,16 @@ def condition(var_name: str, context: dict, cond_json, row: namedtuple) -> bool:
                 condition(var_name, context, cond_json[2], row))
     else:
         [operator, left, right] = cond_json
-=======
-def condition(var_name, context, cond, row: namedtuple) -> bool:
-    if not hasattr(row, var_name):
-        return False
-    elif cond == "ANY":
-        return True
-    elif cond[0] == Command.AND.name:
-        return (condition(var_name, context, cond[1], row) and
-                condition(var_name, context, cond[2], row))
-    else:
-        [operator, left, right] = cond
->>>>>>> 7463986d84403b1a28f28f697f04d78987251f56
 
         if isinstance(left, str) and "." in left:
             alias, attribute = left.split(".")
-            left = lookup(context[alias], attribute)
+            left = lookup(attribute, context[alias])
         else:
             left = lookup(left, row) or left
         
         if isinstance(right, str) and "." in right:
             alias, attribute = right.split(".")
-            right = lookup(context[alias], attribute)
+            right = lookup(attribute, context[alias])
         else:
             right = lookup(right, row) or right
 
@@ -98,7 +74,6 @@ def condition(var_name, context, cond, row: namedtuple) -> bool:
             return left != right
 
 
-<<<<<<< HEAD
 def match(match_json: list, context: dict, scene: dict) -> list:
     """Search the tinyland scene for objects that match statement.
 
@@ -135,29 +110,19 @@ def match(match_json: list, context: dict, scene: dict) -> list:
     #TODO: match first appearance of something
 
     # Filter by tags.
-=======
-def match(m: list, context: dict, scene: dict) -> tuple:
-    [_command, adjectives, relation, tags, data_conditions, alias] = m
-
-
-    # Filter by tags, there must be at least one.
->>>>>>> 7463986d84403b1a28f28f697f04d78987251f56
     matches = []
-    for key, thing in {**scene["allMarkers"], **scene["virtualObjects"]}.items():
+    for key, thing in {**scene["appMarkers"], **scene["virtualObjects"]}.items():
         thing_tup = tup(id=key, **thing)
         if set(thing_tup.type.split(" ")) == set(tags):
             matches.append(thing_tup)
     
-<<<<<<< HEAD
     # Filter by adjectives.
-=======
->>>>>>> 7463986d84403b1a28f28f697f04d78987251f56
-    for adjective in adjectives:
-        matches = adjectives[adjective](matches)
+    if adjectives:
+        for adjective in adjectives:
+            matches = adjectives[adjective](matches)
 
     #TODO: Filter by relation (requires previous match contexts?)
 
-<<<<<<< HEAD
     # Filter by data_conditions.
     for var_name, cond in data_conditions.items():
         if cond[0] == Command.COND.name:
@@ -182,38 +147,27 @@ def create(create_json: list, context: dict, scene: dict) -> dict:
         new_scene: `scene` with the new object added.
     """
     [_command, tags, relation, data] = create_json
-=======
-    # Filter by data_conditions
-    for var_name, cond in data_conditions.items():
-        if cond[0] == Command.COND.name:
-            cond = cond[1]
-        matches = filter(lambda row: condition(var_name, context, cond, row), matches)
-
-    return [(alias, m) for m in matches]
-
-
-def create(c: list, context: dict, scene: dict) -> dict:
-    [_command, tags, relation, data] = c
->>>>>>> 7463986d84403b1a28f28f697f04d78987251f56
 
     parsed_data = {}
     for var, value in data.items():
         if isinstance(value, str) and "." in value:
             alias, attribute = value.split(".")
-            parsed_data[var] = lookup(context[alias], attribute)
+            parsed_data[var] = lookup(attribute, context[alias])
         else:
             parsed_data[var] = value
 
     new_thing = {
         "type": " ".join(tags),
-        relation: [tup.id for tup in context],
         **parsed_data
     }
 
+    if relation:
+        new_thing[relation] = [tup.id for tup in context.values()],
+
     new_scene = {
-        "allMarkers": **scene["allMarkers"],
+        "appMarkers": scene["appMarkers"],
         "virtualObjects": {
-            uuid.UUID(): new_thing,
+            uuid.uuid4(): new_thing,
             **scene["virtualObjects"]
         }
     }
@@ -223,7 +177,6 @@ def create(c: list, context: dict, scene: dict) -> dict:
     return new_scene
 
 
-<<<<<<< HEAD
 def update(update_json: list, context: dict, scene: dict) -> dict:
     """Update the desired object in tinyland scene.
     
@@ -236,16 +189,12 @@ def update(update_json: list, context: dict, scene: dict) -> dict:
         new_scene: `scene` with the object updated.
         """
     [_command, alias, data] = update_json
-=======
-def update(u: list, context: dict, scene: dict) -> dict:
-    [_command, alias, data] = u
->>>>>>> 7463986d84403b1a28f28f697f04d78987251f56
 
     parsed_data = {}
     for var, value in data.items():
         if isinstance(value, str) and "." in value:
             alias, attribute = value.split(".")
-            parsed_data[var] = lookup(context[alias], attribute)
+            parsed_data[var] = lookup(attribute, context[alias])
         else:
             parsed_data[var] = value
     
@@ -260,7 +209,6 @@ def update(u: list, context: dict, scene: dict) -> dict:
 
 
 def run(app_json: list, scene: dict) -> dict:
-<<<<<<< HEAD
     """Run tinyland app on the tinyland scene.
     
     Args:
@@ -285,18 +233,6 @@ def run(app_json: list, scene: dict) -> dict:
         for context in contexts:
             # For each context holding n-1 matches,
             # find matches and create an new context with the nth match.
-=======
-    [reads, writes] = app_json
-    context = {}
-
-    new_scene = scene.copy()
-
-    contexts = [{}]
-
-    for match_json in reads:
-        new_contexts = []
-        for context in contexts:
->>>>>>> 7463986d84403b1a28f28f697f04d78987251f56
             matches = match(match_json, context, scene)
             for alias, tup in matches:
                 new_contexts.append({alias: tup, **context})
