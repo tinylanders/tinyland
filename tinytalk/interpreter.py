@@ -1,9 +1,31 @@
 """Functions for running compiled tinytalk apps on a scene."""
 
 from collections import defaultdict, namedtuple
+from functools import reduce
 import uuid
 
 from grammar import Command
+
+
+create_triggers = defaultdict(set)
+update_triggers = defaultdict(set)
+
+apps_by_id = {}  # id integer -> app JSON
+
+
+def load_app(app_json):
+    [reads, writes] = app_json
+    app_id = len(apps_by_id)
+    if app_json not in apps_by_id.values():
+        apps_by_id[app_id] = app_json
+        for match_json in reads:
+            [_command, adjectives, relation, tags, data_conditions, alias] = match_json
+            if data_conditions is None:
+                for tag in tags:
+                    create_triggers[tag].add(app_id)
+            else:
+                for tag in tags:
+                    update_triggers[tag].add(app_id) 
 
 
 # Dict mapping adjective names in tinytalk to functions that filter a list
@@ -14,6 +36,7 @@ adjectives = {
 
 
 def tup(**kwargs) -> namedtuple:
+    print(kwargs)
     """Convert an arbitrary number of kwargs to a namedtuple."""
     tup = namedtuple("tinyTuple", list(kwargs))
     return tup(**kwargs)
@@ -23,6 +46,25 @@ def lookup(name: str, namespace: namedtuple):
     if hasattr(namespace, str(name)):
         return getattr(namespace, name)
     return None
+
+
+def create(id_string: str, thing: dict, scene: dict):
+    tags = thing["tags"]
+    scene[id_string] = thing
+
+    apps_triggered = reduce((lambda x, y: x | y), [create_triggers[tag] for tag in tags])
+    for app_id in apps_triggered:
+        run(apps_by_id[app_id], scene, trigger_id=id_string)
+
+
+def update(id_string: str, data: dict, scene: dict):
+    thing = scene[id_string]
+    tags = thing["tags"]
+    scene[id_string].update(data)
+
+    apps_triggered = reduce((lambda x, y: x | y), [update_triggers[tag] for tag in tags])
+    for app_id in apps_triggered:
+        run(apps_by_id[app_id], scene, trigger_id=id_string)
 
 
 def condition(var_name: str, context: dict, cond_json, row: namedtuple) -> bool:
@@ -85,25 +127,7 @@ def match(match_json: list, context: dict, scene: dict) -> list:
         context: in apps with multiple match statements, this maps previous
             matched objects to their aliases so that the current match can use
             that data.
-        scene: "database" of all that exists in tinyland. The current implementation
-            assumes the following structure:
-                {
-                    "appMarkers": {
-                        <marker-id>: {
-                            "type": "marker",
-                            "id": <marker-id>,
-                            ...
-                        },
-                        ...
-                    },
-                    "virtualObjects": {
-                        <object-id>: {
-                            "type": <tags>,
-                            ...
-                        },
-                        ...
-                    }
-                }
+        scene: "database" of all that exists in tinyland.
     """
     [_command, adjectives, relation, tags, data_conditions, alias] = match_json
 
@@ -111,31 +135,32 @@ def match(match_json: list, context: dict, scene: dict) -> list:
 
     # Filter by tags.
     matches = []
-    for key, thing in {**scene["appMarkers"], **scene["virtualObjects"]}.items():
+    for key, thing in scene.items():
         thing_tup = tup(id=key, **thing)
         if set(thing_tup.type.split(" ")) == set(tags):
             matches.append(thing_tup)
     
     # Filter by adjectives.
-    if adjectives:
+    if adjectives is not None:
         for adjective in adjectives:
             matches = adjectives[adjective](matches)
 
     #TODO: Filter by relation (requires previous match contexts?)
 
     # Filter by data_conditions.
-    for var_name, cond in data_conditions.items():
-        if cond[0] == Command.COND.name:
-            # This is currently necessary because condition can be "ANY".
-            cond = cond[1]
-        matches = filter(lambda row: condition(var_name, context, cond, row), matches)
+    if data_conditions is not None:
+        for var_name, cond in data_conditions.items():
+            if cond[0] == Command.COND.name:
+                # This is currently necessary because condition can be "ANY".
+                cond = cond[1]
+            matches = filter(lambda row: condition(var_name, context, cond, row), matches)
 
     # The following format makes it easier for match combinations
     # to be turned into context dictionaries.
     return [(alias, m) for m in matches]
 
 
-def create(create_json: list, context: dict, scene: dict) -> dict:
+def create_from_json(create_json: list, context: dict, scene: dict, create_id: str=None):
     """Create a new tinyland object in the scene.
     
     Args:
@@ -143,8 +168,6 @@ def create(create_json: list, context: dict, scene: dict) -> dict:
         context: aliases mapped to their match statements.
         scene: "database" of all that exists in tinyland.
             See match docstring for schema.
-    Returns:
-        new_scene: `scene` with the new object added.
     """
     [_command, tags, relation, data] = create_json
 
@@ -157,6 +180,7 @@ def create(create_json: list, context: dict, scene: dict) -> dict:
             parsed_data[var] = value
 
     new_thing = {
+        "tags": tags,
         "type": " ".join(tags),
         **parsed_data
     }
@@ -164,20 +188,11 @@ def create(create_json: list, context: dict, scene: dict) -> dict:
     if relation:
         new_thing[relation] = [tup.id for tup in context.values()],
 
-    new_scene = {
-        "appMarkers": scene["appMarkers"],
-        "virtualObjects": {
-            uuid.uuid4(): new_thing,
-            **scene["virtualObjects"]
-        }
-    }
-
-    #TODO: implement relation stuff
-
-    return new_scene
+    create_id = create_id or uuid.uuid4()
+    create(create_id, new_thing, scene)
 
 
-def update(update_json: list, context: dict, scene: dict) -> dict:
+def update_from_json(update_json: list, context: dict, scene: dict) -> dict:
     """Update the desired object in tinyland scene.
     
     Args:
@@ -185,9 +200,7 @@ def update(update_json: list, context: dict, scene: dict) -> dict:
         context: aliases mapped to their match statements.
         scene: "database" of all that exists in tinyland.
             See match docstring for schema.
-    Returns:
-        new_scene: `scene` with the object updated.
-        """
+    """
     [_command, alias, data] = update_json
 
     parsed_data = {}
@@ -199,28 +212,18 @@ def update(update_json: list, context: dict, scene: dict) -> dict:
             parsed_data[var] = value
     
     update_id = context[alias].id
-    updated_thing = scene["virtualObjects"][update_id]
-    updated_thing.update(parsed_data)
-
-    new_scene = scene.copy()
-    new_scene["virtualObjects"][update_id] = updated_thing
-
-    return new_scene
+    update(update_id, parsed_data, scene)
 
 
-def run(app_json: list, scene: dict) -> dict:
+def run(app_json: list, scene: dict, trigger_id: str=None) -> dict:
     """Run tinyland app on the tinyland scene.
     
     Args:
         app_json: json for tinyland app.
         scene: "database" of all that exists in tinyland.
             See match docstring for schema.
-    Returns:
-        new_scene: the state of tinyland after running the app on `scene`.
     """
     [reads, writes] = app_json
-
-    new_scene = scene.copy()
 
     # We need to find all combinations of our match statements.
     # contexts will hold one context for each time we need to run the
@@ -235,17 +238,18 @@ def run(app_json: list, scene: dict) -> dict:
             # find matches and create an new context with the nth match.
             matches = match(match_json, context, scene)
             for alias, tup in matches:
-                new_contexts.append({alias: tup, **context})
+                if tup.id not in [t.id for t in context.values()]:
+                    new_contexts.append({alias: tup, **context})
         contexts = new_contexts
 
     for context in contexts:
-        for write in writes:
-            if write[0] == Command.CREATE.name:
-                new_scene = create(write, context, new_scene)
-            elif write[0] == Command.UPDATE.name:
-                new_scene = update(write, context, new_scene)
-    
-    return new_scene
+        if trigger_id is None or trigger_id in [tup.id for tup in context.values()]:
+            for write in writes:
+                if write[0] == Command.CREATE.name:
+                    create_from_json(write, context, scene)
+                elif write[0] == Command.UPDATE.name:
+                    update_from_json(write, context, scene)
+
     
 
 
