@@ -136,7 +136,9 @@ def match(match_json: list, context: dict, scene: dict) -> list:
     # Filter by tags.
     matches = []
     for key, thing in scene.items():
-        thing_tup = tup(id=key, **thing)
+        if "id" not in thing:
+            thing["id"] = key
+        thing_tup = tup(**thing)
         if set(thing_tup.type.split(" ")) == set(tags):
             matches.append(thing_tup)
     
@@ -188,7 +190,7 @@ def create_from_json(create_json: list, context: dict, scene: dict, create_id: s
     if relation:
         new_thing[relation] = [tup.id for tup in context.values()],
 
-    create_id = create_id or uuid.uuid4()
+    create_id = create_id or str(uuid.uuid4())
     create(create_id, new_thing, scene)
 
 
