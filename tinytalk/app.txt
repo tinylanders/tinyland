@@ -1,1 +1,5 @@
-when [#marker ] as m create [#ball x: m.x y: m.y]
+when [#marker ] as m create [#blob x: m.x y: m.y size: 10]
+
+when [#blob x where x > 1.0 y] as b update b [x: 0.0]
+
+when [#blob x y] as b update b [x: b.x + 0.001 y: b.y]
