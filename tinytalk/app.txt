@@ -1,5 +1,31 @@
-when [#marker ] as m create [#blob x: m.x y: m.y size: 10]
+// ======= BALL APP =======
+// Create ball when we see ball
+when (#ball ) as m create (#blob x: m.x, y: m.y, point: [m.x, m.y], size: 10, vy: 0.005, vx: 0.005)
 
-when [#blob x where x > 1.0 y] as b update b [x: 0.0]
 
-when [#blob x y] as b update b [x: b.x + 0.001 y: b.y]
+// Change ball velocity when we hit a wall
+when (#blob y where y > 1.0) as b update b (y: 0.99, vy: b.vy * -1, point: [b.x, 0.95])
+
+when (#blob y where y < 0.0) as b update b (y: 0.01, vy: b.vy * -1, point: [b.x, 0.05])
+
+when (#blob x where x > 1.0) as b update b (x: 0.99, vx: b.vx * -1, point: [0.95, b.y])
+
+when (#blob x where x < 0.0) as b update b (x: 0.01, vx: b.vx * -1, point: [0.05, b.y])
+
+
+// Update ball position based on velocity
+when (#blob x y) as b update b (x: b.x + b.vx y: b.y + b.vy, point: [b.x + b.vx, b.y + b.vy])
+
+
+// ======= PADDLE APP =======
+// Create paddle when we see marker
+when (#marker ) as m create (#line x: m.x, ya: m.y + 0.05, yb: m.y - 0.05, points: [m.x, ya, m.x, yb])
+
+
+// Update paddle line based on marker
+when (#marker x y) as m;
+     (#line x ya yb) as l
+update l (x: m.x,
+          ya: m.y + 0.05,
+          yb: m.y - 0.05,
+          points: [[l.x, l.ya], [l.x, l.yb]])

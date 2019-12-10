@@ -1,32 +1,3 @@
-from . import data
-from .grammar import Command, grammar, TinyTalkVisitor, whitespace_chars
-
-def dump():
-    print("database dump:")
-    print(names)
-
-def read_tiny_talk(s):
-    print(f"***** reading {s}")
-    tree = grammar.parse(s)
-    print("***** the parse tree")
-    print(tree)
-    visitor = TinyTalkVisitor()
-    output = visitor.visit(tree)
-    print("***** output")
-    print(output)
-
-def init_database():
-    data.commit("aruco", "visible", {"id": 111, "x": 0, "y": 0})
-
-
-def run():
-    print("running simulation")
-    init_database()
-    data.commit("aruco", "visible", {"x": 10, "y": 1})
-    print(data.query('aruco'))
-    print("done")
-
-
 # sample tinytalk programs
 
 # syntax for data:

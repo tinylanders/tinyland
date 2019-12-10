@@ -1,8 +1,10 @@
-from . import grammar, TinyTalkVisitor, whitespace_chars, Command
+import random
+
 from hypothesis import given, reject
 from hypothesis.strategies import composite, floats, text, sampled_from
 
-import random
+from .grammar import grammar, TinyTalkVisitor, whitespace_chars, Command
+
 
 ## Tests for TinyTalk's grammar
 #
@@ -39,6 +41,11 @@ def names_or_floats(draw):
             [draw(floats(allow_infinity=False, allow_nan=False)), draw(names())]
         )
     )
+
+
+@composite
+def names_and_floats(draw, max_n=1):
+    return [draw(names_or_floats()) for _ in range(draw(sampled_from(list(range(1, max_n + 1)))))]
 
 
 @composite
@@ -171,6 +178,16 @@ def test_multiplication(n, m, ws):
 
 
 @given(
+    names_and_floats(),
+    whitespaces()
+)
+def test_array(a, ws):
+    to_parse = f"[{ws_between(ws, *a)}]"
+    result = grammar["array"].parse(to_parse)
+    assert visit(result) == [Command.ARRAY.name] + a
+
+
+@given(
     names_or_floats(),
     sampled_from(["<", ">", " is ", " not "]),
     names_or_floats(),
@@ -184,7 +201,7 @@ def test_inequality(val_a, comp_a, val_b, comp_b, val_c, ws):
     )
     assert visit(result) == (
         Command.AND.name,
-        (comp_a.strip(), val_b, val_a),
+        (comp_a.strip(), val_a, val_b),
         (comp_b.strip(), val_b, val_c),
     )
 
@@ -228,13 +245,13 @@ def test_tags(lead_ws, ws, tag1, tag2):
 
 @given(names(), data(3), whitespaces())
 def test_update(name, data, ws):
-    result = grammar["update"].parse(ws_between(ws, "update ", name, " [", data["text"], "]"))
+    result = grammar["update"].parse(ws_between(ws, "update ", name, " (", data["text"], ")"))
     assert visit(result) == (Command.UPDATE.name, name, dict(data["data"]))
 
 
 @given(sampled_from(["", "friend"]), names(), data(3), whitespaces())
 def test_create(relation, tag, data, ws):
-    parse_string = ws_between(ws, "create ", relation, " [", f"#{tag} #{tag} ", data["text"], "]")
+    parse_string = ws_between(ws, "create ", relation, " (", f"#{tag} #{tag} ", data["text"], ")")
     result = grammar["create"].parse(parse_string)
     assert visit(result) == (Command.CREATE.name, [tag, tag], relation or None, dict(data["data"]) if data else None)
 
@@ -250,7 +267,7 @@ def test_create(relation, tag, data, ws):
 def test_match(adjective, relation, tag, conditions, alias, ws):
     result = grammar["match"].parse(
         ws_between(
-            ws, adjective, relation, " [", f"#{tag} #{tag} ", conditions["text"], "] as ", alias))
+            ws, adjective, relation, " (", f"#{tag} #{tag} ", conditions["text"], ") as ", alias))
     assert visit(result) == (Command.MATCH.name,
                              adjective or None,
                              relation or None,
@@ -268,18 +285,18 @@ def test_match(adjective, relation, tag, conditions, alias, ws):
 def test_app(num_matches, num_creates, num_updates, ws):
     if num_creates + num_updates == 0:
         reject()
-    match_texts = ["global friend [ #a x where 0 < x < 50 ] as f", "[ #x ]"]
+    match_texts = ["global friend ( #a x where 0 < x < 50 ) as f", "( #x )"]
     match_data = [
         (Command.MATCH.name,
         "global",
         "friend",
         ["a"],
-        {"x": (Command.COND.name, (Command.AND.name, ("<", "x", 0.0), ("<", "x", 50.0)))},
+        {"x": (Command.COND.name, (Command.AND.name, ("<", 0.0, "x"), ("<", "x", 50.0)))},
         "f"),
         (Command.MATCH.name, None, None, ["x"], None, None)]
-    create_texts = ["create friend [ #a #b x: 50 ]"]
+    create_texts = ["create friend ( #a #b x: 50 )"]
     create_data = [(Command.CREATE.name, ["a", "b"], "friend", {"x": 50.0})]
-    update_texts = ["update paddle [ x: y ]"]
+    update_texts = ["update paddle ( x: y )"]
     update_data = [(Command.UPDATE.name, "paddle", {"x": "y"})]
     
     test_match_data = [match_data[i % len(match_data)] for i in range(num_matches)]

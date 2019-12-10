@@ -10,12 +10,14 @@ class Command(Enum):
     UPDATE = 2
     COND = 3
     AND = 4
+    ARRAY = 5
 
 whitespace_chars = " \n,"
 
 grammar = Grammar(
     r"""
-    app = read ws? write
+    apps = app*
+    app = ws* read ws* write ws*
     read = "when" ws match (";" ws? match)*
     write = (create / update) (";" ws? (create / update))*
     match = adjectives? relation? begin ws? tags ws? data_condition? end (ws alias)?
@@ -26,7 +28,9 @@ grammar = Grammar(
     data = ws? datum (ws datum)*
     data_condition = ws? (condition / datum) (ws (condition / datum))*
     alias = "as" ws name_with_pronouns
-    ws = ~"([ \t\n,])+"
+    ws = blank / comment
+    blank = ~"([ \t\n,])+"
+    comment = ~"//[^\n]*\n"
     adjective = "one" / "only" / "global"
     relation = ws? "friend"
     tag = "#" name
@@ -41,16 +45,17 @@ grammar = Grammar(
     comparison = (ws? (">" / "<") ws?) / (ws ("is" / "not") ws)
     addition = (multiplication / subexpr / value) ws? ("+" / "-") ws? expr
     multiplication = (subexpr / value) ws? "*" ws? expr
-    subexpr = "(" ws? expr ws? ")"
-    value = number / boolean / name / string
+    subexpr = "{" ws? expr ws? "}"
+    array = "[" expr (ws expr)* "]"
+    value = array / number / boolean / name / string
     boolean = "true" / "false"
     string = ~'"[^\"]*"'
     number = ("+" / "-")? digit+ ("." digit+)? ("e" ("+" / "-") digit+)?
     digit = ~"[0-9]"
     name_with_pronouns = name ("/" name)*
     name = !reserved_word ~"[a-z][a-z_-]*(\.[a-z][a-z_-]*)?"
-    begin = ws? "["
-    end = ws? "]"
+    begin = ws? "("
+    end = ws? ")"
     reserved_word = ("as" / "where" / "true" / "false") &ws
     """
 )
@@ -75,8 +80,11 @@ def unwrap(value):
 
 
 class TinyTalkVisitor(NodeVisitor):
+    def visit_apps(self, _node, visited_children):
+        return visited_children
+
     def visit_app(self, _node, visited_children):
-        read, _ws, write = visited_children
+        _ws, read, _ws, write, _ws= visited_children
         return read, write #TODO command string?
     
     def visit_match(self, node, visited_children):
@@ -145,6 +153,11 @@ class TinyTalkVisitor(NodeVisitor):
     def visit_relation(self, _node, visited_children):
         _ws, relation = visited_children
         return relation.text
+    
+    def visit_array(self, node, visited_children):
+        _open, val, rest, _close = visited_children
+        data = [Command.ARRAY.name, unwrap(val)] + [unwrap(v) for [_ws, v] in rest]
+        return data
 
     def visit_data(self, _node, visited_children):
         _ws, first, rest = visited_children

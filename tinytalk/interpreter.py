@@ -88,15 +88,18 @@ def expression(expr_json: list, var_name: str, context: dict, row: namedtuple):
         # print(f"\n\n{result}\n\n")
         return result
     else:
-        [operator, left, right] = expr_json
-        left = expression(left, var_name, context, row)
-        right = expression(right, var_name, context, row)
-        if operator in ["*"]:
-            return left * right
-        elif operator in ["+"]:
-            return left + right
-        elif operator in ["-"]:
-            return left - right
+        if Command.ARRAY.name in expr_json:
+            return [expression(item, var_name, context, row) for item in expr_json[1:]]
+        else:
+            [operator, left, right] = expr_json
+            left = expression(left, var_name, context, row)
+            right = expression(right, var_name, context, row)
+            if operator in ["*"]:
+                return left * right
+            elif operator in ["+"]:
+                return left + right
+            elif operator in ["-"]:
+                return left - right
 
 
 def match(match_json: list, context: dict, scene: dict) -> list:

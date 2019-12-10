@@ -24,9 +24,6 @@ udp_q = queue.Queue(64)
 
 
 def format_scene(scene):
-    for k, v in scene.items():
-        if "x" in v and "y" in v:
-            scene[k].update({"point": [v["x"], v["y"]]})
     return {"type": "render", "payload": scene}
 
 
@@ -38,15 +35,15 @@ class Server:
 
     def reload_apps(self, filepath):
         with open(filepath, "r") as f:
-            apps = f.read().split("\n\n")
-            for app in apps:
-                try:
-                    app_json = visitor.visit(grammar.parse(app.strip()))
-                except parsimonious.exceptions.ParseError as e:
-                    logging.error(f"Could not parse app {app_json}: {e}")
-                else:
-                    logging.info(f"Loading app {app_json} from {filepath}")
-                    self.scene.load_app(app_json)
+            apps_string = f.read()
+            try:
+                apps_json = visitor.visit(grammar.parse(apps_string.strip()))
+            except parsimonious.exceptions.ParseError as e:
+                logging.error(f"Could not parse app {apps_string}: {e}")
+            else:
+                for app in apps_json:
+                    logging.info(f"Loading app {app} from {filepath}")
+                    self.scene.load_app(app)
 
     def start(self):
         logging.info(f"Starting WebSocket Server on {self.ip_address}:{self.port}")
@@ -70,6 +67,7 @@ class Server:
                 last_upload = os.path.getmtime(APP_FILE)
 
             if self.scene.execute_loop():
+                logging.debug(f"Scene: {self.scene.scene}")
                 await websocket.send(json.dumps(format_scene(self.scene.scene)))
             await asyncio.sleep(0.01)
 
