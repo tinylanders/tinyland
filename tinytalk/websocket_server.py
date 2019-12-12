@@ -9,6 +9,9 @@ import socket
 import sys
 import websockets
 
+from pythonosc import osc_server
+from pythonosc import dispatcher
+
 from grammar import grammar, TinyTalkVisitor
 from scene import TinylandScene
 
@@ -27,7 +30,7 @@ def format_scene(scene):
     return {"type": "render", "payload": scene}
 
 
-class Server:
+class WebsocketServer:
     def __init__(self, ip_address, port):
         self.ip_address = ip_address
         self.port = port
@@ -55,8 +58,8 @@ class Server:
 
             # See if we've gotten an update over UDP
             if not udp_q.empty():
-                data = udp_q.get(True)
-                new_object = json.loads(data.decode("utf-8"))
+                new_object = udp_q.get(True)
+                print(new_object)
                 if new_object["id"] in self.scene.scene:
                     self.scene.update(new_object["id"], new_object)
                 else:
@@ -72,22 +75,35 @@ class Server:
             await asyncio.sleep(0.01)
 
 
-async def udp_listener(ip_address, port):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    logging.info(f"Started UDP listener on {ip_address}:{port}")
-    sock.settimeout(0.01)
-    sock.bind((ip_address, port))
-    while True:
-        try:
-            data, _addr = sock.recvfrom(1024)
-        except socket.timeout:
-            await asyncio.sleep(0.01)
-        else:
-            logging.debug(f"UDP received: {data}")
-            udp_q.put(data, True)
-            await asyncio.sleep(0.01)
+def get_udp_server(ip_address, port):
+    def unknown_handler(addr, *args):
+        logging.debug("Unknown stuff: {} {}".format(addr, args))
+
+    def marker_handler(addr, *args):
+        global udp_q
+        if args[0] == "set":
+            marker = {
+                    "tags": ["marker"],
+                    "type": "marker",
+                    "id": args[2],
+                    "x": args[3],
+                    "y": args[4],
+                    "a": args[5]
+            }
+            udp_q.put(marker)
+
+    disp = dispatcher.Dispatcher()
+    disp.map('/tuio/2Dobj', marker_handler)
+    disp.set_default_handler(unknown_handler)
+
+    server = osc_server.AsyncIOOSCUDPServer(
+        (args.ip_address, args.udp_port),
+        disp,
+        asyncio.get_event_loop())
+    return server
 
 
+            
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -118,7 +134,10 @@ if __name__ == "__main__":
     elif args.verbose > 1:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    ws = Server(args.ip_address, args.websocket_port)
+    ws = WebsocketServer(args.ip_address, args.websocket_port)
+    udp = get_udp_server(args.ip_address, args.udp_port)
+
     asyncio.get_event_loop().run_until_complete(ws.start())
-    asyncio.get_event_loop().create_task(udp_listener(args.ip_address, args.udp_port))
+    asyncio.get_event_loop().create_task(udp.create_serve_endpoint())
     asyncio.get_event_loop().run_forever()
+
