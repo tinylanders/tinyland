@@ -19,7 +19,7 @@ when (#blob x y) as b update b (x: b.x + b.vx y: b.y + b.vy, point: [b.x + b.vx,
 
 // ======= PADDLE APP =======
 // Create paddle when we see marker
-when (#marker ) as m create (#line x: m.x, ya: m.y + 0.05, yb: m.y - 0.05, points: [m.x, ya, m.x, yb])
+when (#marker ) as m create (#line x: m.x, ya: m.y + 0.05, yb: m.y - 0.05, points: [[m.x, ya], [m.x, yb]])
 
 
 // Update paddle line based on marker

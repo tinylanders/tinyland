@@ -23,7 +23,7 @@ APP_FILE = "app.txt"
 last_upload = -sys.maxsize
 
 visitor = TinyTalkVisitor()
-udp_q = queue.Queue(64)
+udp_msg = None
 
 
 def format_scene(scene):
@@ -55,15 +55,17 @@ class WebsocketServer:
     async def tinyland_loop(self, websocket, path):
         while True:
             global last_upload
+            global udp_msg
 
             # See if we've gotten an update over UDP
-            if not udp_q.empty():
-                new_object = udp_q.get(True)
+            if udp_msg is not None:
+                new_object = udp_msg
                 print(new_object)
                 if new_object["id"] in self.scene.scene:
                     self.scene.update(new_object["id"], new_object)
                 else:
                     self.scene.create(new_object["id"], new_object)
+                udp_msg = None
 
             if os.path.getmtime(APP_FILE) > last_upload:
                 self.reload_apps(APP_FILE)
@@ -80,7 +82,7 @@ def get_udp_server(ip_address, port):
         logging.debug("Unknown stuff: {} {}".format(addr, args))
 
     def marker_handler(addr, *args):
-        global udp_q
+        global udp_msg
         if args[0] == "set":
             marker = {
                     "tags": ["marker"],
@@ -90,7 +92,8 @@ def get_udp_server(ip_address, port):
                     "y": args[4],
                     "a": args[5]
             }
-            udp_q.put(marker)
+            udp_msg = marker
+            logging.debug(f"Marker: {marker}")
 
     disp = dispatcher.Dispatcher()
     disp.map('/tuio/2Dobj', marker_handler)
@@ -101,7 +104,6 @@ def get_udp_server(ip_address, port):
         disp,
         asyncio.get_event_loop())
     return server
-
 
             
 if __name__ == "__main__":
